@@ -68,7 +68,7 @@ def setup(hass, config):
         'max': maximum,
         'name': name,
         'step': step,
-        'initial': 1,
+        'initial': initial,
         'unit_of_measurement': unit,
       }
 
@@ -88,37 +88,43 @@ class Opensprinkler(object):
   For firmware API details, see
   https://openthings.freshdesk.com/support/solutions/articles/5000716363-os-api-documents
   """
+  # minimum time interval between API calls in seconds
   MIN_API_INTERVAL = 10
-
+    
   def __init__(self, host, password):
     self._host = host
     self._password = password
     self.data = {}
-    #two buffers will hold API-results and reduce API load
+    #two caches are used to reduce API load:
     self.status_cache = {}
     self.controller_cache = {} 
     self.lock_cache = False
     self.timestamp_cache=0
+    #initialize cache when Class is instantiated:
     self.update_cache()
+    
 
   def update_cache(self):
+    """ Fetches fresh data from Opensprinkler, but only if last call was at least
+    MIN_API_INTERVAL seconds ago. Otherwise it just skips the update.
+    """
+    #locking is essential because Homeassistant spawns several worker-threads.
     if self.lock_cache == False:
       self.lock_cache = True
+      
       if (time.time() - self.timestamp_cache) > Opensprinkler.MIN_API_INTERVAL:
         self.timestamp_cache = time.time()
         try:
           url = 'http://{}/js?pw={}'.format(self._host, self._password)
-          self.status_cache = requests.get(url, timeout=10)
+          self.response = requests.get(url, timeout=10)
+          self.status_cache = self.response.json()
           url = 'http://{}/jc?pw={}'.format(self._host, self._password)
-          self.controller_cache = requests.get(url, timeout=10)
+          self.response = requests.get(url, timeout=10)
+          self.controller_cache = self.response.json()
         except requests.exceptions.ConnectionError:
           _LOGGER.error("No route to device '%s'", self._host)
       self.lock_cache = False
     
-  def _get_controller_variable(self, key, variable):
-    self.update_cache()
-    self.data[key] = self.controller_cache.json()[variable]
-    return self.data[key]
 
   def stations(self):
     try:
@@ -133,6 +139,7 @@ class Opensprinkler(object):
       self.data[CONF_STATIONS].append(OpensprinklerStation(self._host, self._password, name, i, self))
 
     return self.data[CONF_STATIONS]
+
 
   def programs(self):
     try:
@@ -160,19 +167,24 @@ class Opensprinkler(object):
     return self.data[CONF_WATER_LEVEL]
 
   def last_run(self):
-    return self._get_controller_variable(CONF_LAST_RUN, 'lrun')
+    self._opensprinkler.update_cache()
+    return self.controller_cache['lrun']
 
   def enable_operation(self):
-    return self._get_controller_variable(CONF_ENABLE_OPERATION, 'en')
+    self._opensprinkler.update_cache()
+    return self.controller_cache['en']
 
   def rain_delay(self):
-    return self._get_controller_variable(CONF_RAIN_DELAY, 'rd')
+    self._opensprinkler.update_cache()
+    return self.controller_cache['rd']
 
   def rain_delay_stop_time(self):
-    return self._get_controller_variable(CONF_RAIN_DELAY, 'rdst')
+    self._opensprinkler.update_cache()
+    return self.controller_cache['rdst']
 
   def rain_sensor(self):
-    return self._get_controller_variable(CONF_RAIN_SENSOR, 'rs')
+    self._opensprinkler.update_cache()
+    return self.controller_cache['rs']
 
 
 class OpensprinklerStation(object):
@@ -194,11 +206,11 @@ class OpensprinklerStation(object):
 
   def status(self):
     self._opensprinkler.update_cache()
-    return self._opensprinkler.status_cache.json()['sn'][self._index]
+    return self._opensprinkler.status_cache.['sn'][self._index]
 
   def p_status(self):
     self._opensprinkler.update_cache()
-    return self._opensprinkler.controller_cache.json()['ps'][self._index]
+    return self._opensprinkler.controller_cache.['ps'][self._index]
 
   def turn_on(self, minutes):
     try:
