@@ -89,8 +89,9 @@ class Opensprinkler(object):
   For firmware API details, see
   https://openthings.freshdesk.com/support/solutions/articles/5000716363-os-api-documents
   """
+  # minimum time interval between API calls in seconds
   MIN_API_INTERVAL = 10
-
+    
   def __init__(self, host, password):
     self._host = host
     self._password = password
@@ -104,7 +105,6 @@ class Opensprinkler(object):
     #initialize cache when Class is instantiated:
     self.update_cache()
     
-
 
   def update_cache(self):
     """ Fetches fresh data from Opensprinkler, but only if last call was at least
