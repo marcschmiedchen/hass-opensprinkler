@@ -89,9 +89,8 @@ class Opensprinkler(object):
   For firmware API details, see
   https://openthings.freshdesk.com/support/solutions/articles/5000716363-os-api-documents
   """
-  # minimum time interval between API calls in seconds
-  MIN_API_INTERVAL = 60
-    
+  MIN_API_INTERVAL = 10
+
   def __init__(self, host, password):
     self._host = host
     self._password = password
