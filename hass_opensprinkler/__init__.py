@@ -25,6 +25,7 @@ CONF_RAIN_SENSOR = 'rain_sensor'
 CONF_CONFIG = 'config'
 
 _LOGGER = logging.getLogger(__name__)
+_LOGGER.setLevel('DEBUG')
 
 CONFIG_SCHEMA = vol.Schema({
   DOMAIN: vol.Schema({
@@ -68,7 +69,7 @@ def setup(hass, config):
         'max': maximum,
         'name': name,
         'step': step,
-        'initial': 1,
+        'initial': initial,
         'unit_of_measurement': unit,
       }
 
@@ -88,42 +89,54 @@ class Opensprinkler(object):
   For firmware API details, see
   https://openthings.freshdesk.com/support/solutions/articles/5000716363-os-api-documents
   """
+  # minimum time interval between API calls in seconds
   MIN_API_INTERVAL = 10
 
   def __init__(self, host, password):
     self._host = host
     self._password = password
     self.data = {}
-    #two buffers will hold API-results and reduce API load
+    #three caches are used to reduce API load:
     self.status_cache = {}
     self.controller_cache = {} 
+    self.options_cache = {} 
     self.lock_cache = False
     self.timestamp_cache=0
+    #initialize cache when Class is instantiated:
     self.update_cache()
 
+
   def update_cache(self):
+    """ Fetches fresh data from Opensprinkler, but only if last call was at least
+    MIN_API_INTERVAL seconds ago. Otherwise it just skips the update.
+    """
+    #locking is essential because Homeassistant spawns several worker-threads.
     if self.lock_cache == False:
       self.lock_cache = True
+
       if (time.time() - self.timestamp_cache) > Opensprinkler.MIN_API_INTERVAL:
         self.timestamp_cache = time.time()
         try:
-          url = 'http://{}/js?pw={}'.format(self._host, self._password)
-          self.status_cache = requests.get(url, timeout=10)
-          url = 'http://{}/jc?pw={}'.format(self._host, self._password)
-          self.controller_cache = requests.get(url, timeout=10)
+          _LOGGER.debug('updating cache')
+          #instead of querying one afer another, just get all info in one call
+          url = 'http://{}/ja?pw={}'.format(self._host, self._password)
+          self.response = requests.get(url, timeout=10)
+          self.status_cache = self.response.json()['status']
+          self.controller_cache = self.response.json()['settings']
+          self.options_cache = self.response.json()['options']
         except requests.exceptions.ConnectionError:
           _LOGGER.error("No route to device '%s'", self._host)
-      self.lock_cache = False
+      else:
+        _LOGGER.debug('recycling data')
     
-  def _get_controller_variable(self, key, variable):
-    self.update_cache()
-    self.data[key] = self.controller_cache.json()[variable]
-    return self.data[key]
-
+    self.lock_cache = False
+      
+    
   def stations(self):
     try:
       url = 'http://{}/jn?pw={}'.format(self._host, self._password)
       response = requests.get(url, timeout=10)
+      _LOGGER.info("stations API")
     except requests.exceptions.ConnectionError:
       _LOGGER.error("No route to device '%s'", self._host)
     
@@ -138,6 +151,7 @@ class Opensprinkler(object):
     try:
       url = 'http://{}/jp?pw={}'.format(self._host, self._password)
       response = requests.get(url, timeout=10)
+      _LOGGER.info("programs API")
     except requests.exceptions.ConnectionError:
       _LOGGER.error("No route to device '%s'", self._host)
 
@@ -149,30 +163,28 @@ class Opensprinkler(object):
     return self.data[CONF_PROGRAMS]
 
   def water_level(self):
-    try:
-      url = 'http://{}/jo?pw={}'.format(self._host, self._password)
-      response = requests.get(url, timeout=10)
-    except requests.exceptions.ConnectionError:
-      _LOGGER.error("No route to device '%s'", self._host)
-
-    self.data[CONF_WATER_LEVEL] = response.json()['wl']
-
-    return self.data[CONF_WATER_LEVEL]
-
+    self.update_cache()
+    return self.options_cache['wl']
+    
   def last_run(self):
-    return self._get_controller_variable(CONF_LAST_RUN, 'lrun')
+    self.update_cache()
+    return self.controller_cache['lrun']
 
   def enable_operation(self):
-    return self._get_controller_variable(CONF_ENABLE_OPERATION, 'en')
+    self.update_cache()
+    return self.controller_cache['en']
 
   def rain_delay(self):
-    return self._get_controller_variable(CONF_RAIN_DELAY, 'rd')
+    self.update_cache()
+    return self.controller_cache['rd']
 
   def rain_delay_stop_time(self):
-    return self._get_controller_variable(CONF_RAIN_DELAY, 'rdst')
+    self.update_cache()
+    return self.controller_cache['rdst']
 
   def rain_sensor(self):
-    return self._get_controller_variable(CONF_RAIN_SENSOR, 'rs')
+    self.update_cache()
+    return self.controller_cache['rs']
 
 
 class OpensprinklerStation(object):
@@ -194,16 +206,17 @@ class OpensprinklerStation(object):
 
   def status(self):
     self._opensprinkler.update_cache()
-    return self._opensprinkler.status_cache.json()['sn'][self._index]
+    return self._opensprinkler.status_cache['sn'][self._index]
 
   def p_status(self):
     self._opensprinkler.update_cache()
-    return self._opensprinkler.controller_cache.json()['ps'][self._index]
+    return self._opensprinkler.controller_cache['ps'][self._index]
 
   def turn_on(self, minutes):
     try:
       url = 'http://{}/cm?pw={}&sid={}&en=1&t={}'.format(self._host, self._password, self._index, minutes * 60)
       response = requests.get(url, timeout=10)
+      _LOGGER.debug("calling API: turn on/off")
     except requests.exceptions.ConnectionError:
       _LOGGER.error("No route to device '%s'", self._host)
 
@@ -211,6 +224,7 @@ class OpensprinklerStation(object):
     try:
       url = 'http://{}/cm?pw={}&sid={}&en=0'.format(self._host, self._password, self._index)
       response = requests.get(url, timeout=10)
+      _LOGGER.debug("calling API: turn on/off")
     except requests.exceptions.ConnectionError:
       _LOGGER.error("No route to device '%s'", self._host)
 
@@ -235,5 +249,6 @@ class OpensprinklerProgram(object):
     try:
       url = 'http://{}/mp?pw={}&pid={}&uwt=0'.format(self._host, self._password, self._index)
       response = requests.get(url, timeout=10)
+      _LOGGER.debug("calling API: activate")
     except requests.exceptions.ConnectionError:
       _LOGGER.error("No route to device '%s'", self._host)
