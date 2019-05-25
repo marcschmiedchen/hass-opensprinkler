@@ -106,6 +106,7 @@ class Opensprinkler(object):
     self.update_cache()
     
 
+
   def update_cache(self):
     """ Fetches fresh data from Opensprinkler, but only if last call was at least
     MIN_API_INTERVAL seconds ago. Otherwise it just skips the update.
@@ -118,7 +119,7 @@ class Opensprinkler(object):
         self.timestamp_cache = time.time()
         try:
           _LOGGER.debug('updating cache')
-          #instead of querying one afer another, just get all info in one call
+          #instead of querying one after another, just get all info in one call
           url = 'http://{}/ja?pw={}'.format(self._host, self._password)
           self.response = requests.get(url, timeout=10)
           self.status_cache = self.response.json()['status']
