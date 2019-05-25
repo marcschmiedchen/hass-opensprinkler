@@ -129,6 +129,7 @@ class Opensprinkler(object):
           _LOGGER.error("No route to device '%s'", self._host)
       else:
         _LOGGER.debug('recycling data')
+    
       self.lock_cache = False
       
     
