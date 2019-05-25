@@ -91,7 +91,7 @@ class Opensprinkler(object):
   """
   # minimum time interval between API calls in seconds
   MIN_API_INTERVAL = 10
-
+    
   def __init__(self, host, password):
     self._host = host
     self._password = password
@@ -104,6 +104,7 @@ class Opensprinkler(object):
     self.timestamp_cache=0
     #initialize cache when Class is instantiated:
     self.update_cache()
+    
 
 
   def update_cache(self):
@@ -146,6 +147,7 @@ class Opensprinkler(object):
       self.data[CONF_STATIONS].append(OpensprinklerStation(self._host, self._password, name, i, self))
 
     return self.data[CONF_STATIONS]
+
 
   def programs(self):
     try:
