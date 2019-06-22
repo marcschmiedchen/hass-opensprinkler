@@ -90,7 +90,7 @@ class Opensprinkler(object):
   https://openthings.freshdesk.com/support/solutions/articles/5000716363-os-api-documents
   """
   # minimum time interval between API calls in seconds
-  MIN_API_INTERVAL = 10
+  MIN_API_INTERVAL = 60
     
   def __init__(self, host, password):
     self._host = host
@@ -129,8 +129,7 @@ class Opensprinkler(object):
           _LOGGER.error("No route to device '%s'", self._host)
       else:
         _LOGGER.debug('recycling data')
-    
-    self.lock_cache = False
+      self.lock_cache = False
       
     
   def stations(self):
