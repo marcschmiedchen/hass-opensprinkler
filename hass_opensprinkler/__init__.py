@@ -90,7 +90,7 @@ class Opensprinkler(object):
   https://openthings.freshdesk.com/support/solutions/articles/5000716363-os-api-documents
   """
   # minimum time interval between API calls in seconds
-  MIN_API_INTERVAL = 10
+  MIN_API_INTERVAL = 60
     
   def __init__(self, host, password):
     self._host = host
